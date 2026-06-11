@@ -1,20 +1,30 @@
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Layout, Menu } from 'antd';
+import { Layout, Menu, Badge } from 'antd';
 import {
   DashboardOutlined,
   FileTextOutlined,
   BarChartOutlined,
   SettingOutlined,
-  SafetyOutlined
+  SafetyOutlined,
+  CheckCircleOutlined,
 } from '@ant-design/icons';
 import type { MenuProps } from 'antd';
+import { useRuleStore } from '../../stores';
+import { useEffect } from 'react';
 
 const { Sider } = Layout;
 
 const Sidebar: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { rules, fetchRules } = useRuleStore();
+
+  useEffect(() => {
+    fetchRules();
+  }, [fetchRules]);
+
+  const pendingCount = rules.filter(r => r.status === 'pending').length;
 
   const menuItems: MenuProps['items'] = [
     {
@@ -26,6 +36,18 @@ const Sidebar: React.FC = () => {
       key: '/rules',
       icon: <FileTextOutlined />,
       label: '规则列表',
+    },
+    {
+      key: '/approvals',
+      icon: <CheckCircleOutlined />,
+      label: (
+        <span>
+          审批队列
+          {pendingCount > 0 && (
+            <Badge count={pendingCount} size="small" offset={[10, 0]} />
+          )}
+        </span>
+      ),
     },
     {
       key: '/logs',

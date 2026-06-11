@@ -21,6 +21,7 @@ import {
   DeleteOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useParams } from 'react-router-dom';
+import dayjs from 'dayjs';
 import { MainLayout } from '../../components/layout';
 import { useRuleStore } from '../../stores';
 import type { Condition, Action } from '../../types';
@@ -36,6 +37,7 @@ const RuleEditor: React.FC = () => {
   const [form] = Form.useForm();
   const [conditions, setConditions] = useState<Condition[]>([]);
   const [actions, setActions] = useState<Action[]>([]);
+  const [isPermanent, setIsPermanent] = useState(true);
 
   useEffect(() => {
     if (isEdit) {
@@ -45,15 +47,18 @@ const RuleEditor: React.FC = () => {
 
   useEffect(() => {
     if (currentRule && isEdit) {
+      const permanent = currentRule.effectiveTime.permanent;
+      setIsPermanent(permanent);
+
       form.setFieldsValue({
         name: currentRule.name,
         description: currentRule.description,
         businessLine: currentRule.businessLine,
         priority: currentRule.priority,
         tags: currentRule.tags,
-        permanent: currentRule.effectiveTime.permanent,
-        startTime: currentRule.effectiveTime.startTime,
-        endTime: currentRule.effectiveTime.endTime,
+        permanent: permanent,
+        startTime: currentRule.effectiveTime.startTime ? dayjs(currentRule.effectiveTime.startTime) : null,
+        endTime: currentRule.effectiveTime.endTime ? dayjs(currentRule.effectiveTime.endTime) : null,
         scenarios: currentRule.scope.scenarios,
         regions: currentRule.scope.regions,
       });
@@ -102,6 +107,13 @@ const RuleEditor: React.FC = () => {
     setActions(updated);
   };
 
+  const handlePermanentChange = (checked: boolean) => {
+    setIsPermanent(checked);
+    form.setFieldsValue({
+      permanent: checked,
+    });
+  };
+
   const handleSave = async (status: 'draft' | 'pending' = 'draft') => {
     try {
       const values = await form.validateFields();
@@ -115,8 +127,8 @@ const RuleEditor: React.FC = () => {
         conditions,
         actions,
         effectiveTime: {
-          startTime: values.startTime,
-          endTime: values.endTime,
+          startTime: values.startTime ? values.startTime.format('YYYY-MM-DDTHH:mm:ss[Z]') : null,
+          endTime: values.endTime ? values.endTime.format('YYYY-MM-DDTHH:mm:ss[Z]') : null,
           permanent: values.permanent,
         },
         scope: {
@@ -422,10 +434,13 @@ const RuleEditor: React.FC = () => {
                   name="permanent"
                   valuePropName="checked"
                 >
-                  <Switch />
+                  <Switch
+                    checked={isPermanent}
+                    onChange={handlePermanentChange}
+                  />
                 </Form.Item>
 
-                {!form.getFieldValue('permanent') && (
+                {!isPermanent && (
                   <>
                     <Form.Item
                       label="开始时间"
@@ -433,6 +448,7 @@ const RuleEditor: React.FC = () => {
                     >
                       <DatePicker
                         showTime
+                        format="YYYY-MM-DD HH:mm:ss"
                         style={{ width: '100%' }}
                         placeholder="选择开始时间"
                       />
@@ -444,6 +460,7 @@ const RuleEditor: React.FC = () => {
                     >
                       <DatePicker
                         showTime
+                        format="YYYY-MM-DD HH:mm:ss"
                         style={{ width: '100%' }}
                         placeholder="选择结束时间"
                       />

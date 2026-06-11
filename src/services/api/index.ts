@@ -1,12 +1,13 @@
 import { Rule, CallLog, User, Alert, RuleVersion, CallStats, RuleFilters } from '../../types';
-import { mockRules, mockCallLogs, mockUsers, mockAlerts, mockRuleVersions, mockCallStats } from '../mock/data';
+import { storageService } from '../storage';
+import { mockCallStats } from '../mock/data';
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 export const ruleApi = {
   getRules: async (filters?: RuleFilters): Promise<Rule[]> => {
     await delay(500);
-    let rules = [...mockRules];
+    let rules = storageService.getRules();
 
     if (filters) {
       if (filters.search) {
@@ -38,7 +39,7 @@ export const ruleApi = {
 
   getRuleById: async (id: string): Promise<Rule | null> => {
     await delay(300);
-    return mockRules.find(r => r.id === id) || null;
+    return storageService.getRuleById(id);
   },
 
   createRule: async (rule: Omit<Rule, 'id' | 'version' | 'createdAt' | 'updatedAt'>): Promise<Rule> => {
@@ -50,66 +51,129 @@ export const ruleApi = {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
-    mockRules.push(newRule);
+    storageService.addRule(newRule);
+
+    storageService.addRuleVersion({
+      id: `version-${Date.now()}`,
+      ruleId: newRule.id,
+      version: 1,
+      rule: newRule,
+      changedAt: new Date().toISOString(),
+      changedBy: 'current-user',
+      changeDescription: '创建规则'
+    });
+
     return newRule;
   },
 
   updateRule: async (id: string, updates: Partial<Rule>): Promise<Rule | null> => {
     await delay(500);
-    const index = mockRules.findIndex(r => r.id === id);
-    if (index === -1) return null;
+    const existingRule = storageService.getRuleById(id);
+    if (!existingRule) return null;
 
-    mockRules[index] = {
-      ...mockRules[index],
+    const updatedRule = storageService.updateRule(id, {
       ...updates,
-      version: mockRules[index].version + 1,
-      updatedAt: new Date().toISOString()
-    };
-    return mockRules[index];
+      version: existingRule.version + 1
+    });
+
+    if (updatedRule) {
+      storageService.addRuleVersion({
+        id: `version-${Date.now()}`,
+        ruleId: updatedRule.id,
+        version: updatedRule.version,
+        rule: updatedRule,
+        changedAt: new Date().toISOString(),
+        changedBy: 'current-user',
+        changeDescription: updates.description || '更新规则'
+      });
+    }
+
+    return updatedRule;
   },
 
   deleteRule: async (id: string): Promise<boolean> => {
     await delay(400);
-    const index = mockRules.findIndex(r => r.id === id);
-    if (index === -1) return false;
-    mockRules.splice(index, 1);
-    return true;
+    return storageService.deleteRule(id);
   },
 
   publishRule: async (id: string): Promise<Rule | null> => {
     await delay(700);
-    const rule = mockRules.find(r => r.id === id);
+    const rule = storageService.getRuleById(id);
     if (!rule) return null;
 
-    rule.status = 'published';
-    rule.version += 1;
-    rule.updatedAt = new Date().toISOString();
-    return rule;
+    const updatedRule = storageService.updateRule(id, {
+      status: 'published',
+      version: rule.version + 1
+    });
+
+    if (updatedRule) {
+      storageService.addRuleVersion({
+        id: `version-${Date.now()}`,
+        ruleId: updatedRule.id,
+        version: updatedRule.version,
+        rule: updatedRule,
+        changedAt: new Date().toISOString(),
+        changedBy: 'current-user',
+        changeDescription: '发布规则'
+      });
+    }
+
+    return updatedRule;
   },
 
   disableRule: async (id: string): Promise<Rule | null> => {
     await delay(500);
-    const rule = mockRules.find(r => r.id === id);
+    const rule = storageService.getRuleById(id);
     if (!rule) return null;
 
-    rule.status = 'disabled';
-    rule.updatedAt = new Date().toISOString();
-    return rule;
+    const updatedRule = storageService.updateRule(id, {
+      status: 'disabled',
+      version: rule.version + 1
+    });
+
+    if (updatedRule) {
+      storageService.addRuleVersion({
+        id: `version-${Date.now()}`,
+        ruleId: updatedRule.id,
+        version: updatedRule.version,
+        rule: updatedRule,
+        changedAt: new Date().toISOString(),
+        changedBy: 'current-user',
+        changeDescription: '停用规则'
+      });
+    }
+
+    return updatedRule;
   },
 
   enableGrayRule: async (id: string): Promise<Rule | null> => {
     await delay(600);
-    const rule = mockRules.find(r => r.id === id);
+    const rule = storageService.getRuleById(id);
     if (!rule) return null;
 
-    rule.status = 'gray';
-    rule.updatedAt = new Date().toISOString();
-    return rule;
+    const updatedRule = storageService.updateRule(id, {
+      status: 'gray',
+      version: rule.version + 1
+    });
+
+    if (updatedRule) {
+      storageService.addRuleVersion({
+        id: `version-${Date.now()}`,
+        ruleId: updatedRule.id,
+        version: updatedRule.version,
+        rule: updatedRule,
+        changedAt: new Date().toISOString(),
+        changedBy: 'current-user',
+        changeDescription: '启用灰度'
+      });
+    }
+
+    return updatedRule;
   },
 
   copyRule: async (id: string): Promise<Rule | null> => {
     await delay(500);
-    const original = mockRules.find(r => r.id === id);
+    const original = storageService.getRuleById(id);
     if (!original) return null;
 
     const copy: Rule = {
@@ -121,13 +185,24 @@ export const ruleApi = {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
-    mockRules.push(copy);
+    storageService.addRule(copy);
+
+    storageService.addRuleVersion({
+      id: `version-${Date.now()}`,
+      ruleId: copy.id,
+      version: 1,
+      rule: copy,
+      changedAt: new Date().toISOString(),
+      changedBy: 'current-user',
+      changeDescription: '复制规则'
+    });
+
     return copy;
   },
 
-  testRule: async (id: string, _input: Record<string, any>): Promise<{ hit: boolean; result: any; executionTime: number }> => {
+  testRule: async (id: string, input: Record<string, any>): Promise<{ hit: boolean; result: any; executionTime: number }> => {
     await delay(800);
-    const rule = mockRules.find(r => r.id === id);
+    const rule = storageService.getRuleById(id);
     if (!rule) {
       return { hit: false, result: null, executionTime: 0 };
     }
@@ -142,33 +217,108 @@ export const ruleApi = {
     };
     const executionTime = Date.now() - startTime;
 
+    storageService.addCallLog({
+      id: `log-${Date.now()}`,
+      ruleId: rule.id,
+      ruleName: rule.name,
+      input,
+      output: result,
+      hitResult: hit ? 'hit' : 'miss',
+      executionTime,
+      timestamp: new Date().toISOString()
+    });
+
     return { hit, result, executionTime };
   },
 
   getRuleVersions: async (ruleId: string): Promise<RuleVersion[]> => {
     await delay(400);
-    return mockRuleVersions.filter(v => v.ruleId === ruleId);
+    return storageService.getRuleVersions(ruleId);
   },
 
   rollbackRule: async (ruleId: string, version: number): Promise<Rule | null> => {
     await delay(600);
-    const rule = mockRules.find(r => r.id === ruleId);
-    const targetVersion = mockRuleVersions.find(v => v.ruleId === ruleId && v.version === version);
+    const rule = storageService.getRuleById(ruleId);
+    const versions = storageService.getRuleVersions(ruleId);
+    const targetVersion = versions.find(v => v.version === version);
 
     if (!rule || !targetVersion) return null;
 
-    Object.assign(rule, targetVersion.rule, {
-      version: rule.version + 1,
-      updatedAt: new Date().toISOString()
+    const updatedRule = storageService.updateRule(ruleId, {
+      ...targetVersion.rule,
+      version: rule.version + 1
     });
-    return rule;
+
+    if (updatedRule) {
+      storageService.addRuleVersion({
+        id: `version-${Date.now()}`,
+        ruleId: updatedRule.id,
+        version: updatedRule.version,
+        rule: updatedRule,
+        changedAt: new Date().toISOString(),
+        changedBy: 'current-user',
+        changeDescription: `回滚到版本 ${version}`
+      });
+    }
+
+    return updatedRule;
+  },
+
+  approveRule: async (id: string): Promise<Rule | null> => {
+    await delay(700);
+    const rule = storageService.getRuleById(id);
+    if (!rule) return null;
+
+    const updatedRule = storageService.updateRule(id, {
+      status: 'published',
+      version: rule.version + 1
+    });
+
+    if (updatedRule) {
+      storageService.addRuleVersion({
+        id: `version-${Date.now()}`,
+        ruleId: updatedRule.id,
+        version: updatedRule.version,
+        rule: updatedRule,
+        changedAt: new Date().toISOString(),
+        changedBy: 'current-user',
+        changeDescription: '审批通过'
+      });
+    }
+
+    return updatedRule;
+  },
+
+  rejectRule: async (id: string, reason: string): Promise<Rule | null> => {
+    await delay(700);
+    const rule = storageService.getRuleById(id);
+    if (!rule) return null;
+
+    const updatedRule = storageService.updateRule(id, {
+      status: 'draft',
+      version: rule.version + 1
+    });
+
+    if (updatedRule) {
+      storageService.addRuleVersion({
+        id: `version-${Date.now()}`,
+        ruleId: updatedRule.id,
+        version: updatedRule.version,
+        rule: updatedRule,
+        changedAt: new Date().toISOString(),
+        changedBy: 'current-user',
+        changeDescription: `审批驳回: ${reason}`
+      });
+    }
+
+    return updatedRule;
   }
 };
 
 export const logApi = {
   getCallLogs: async (params?: { ruleId?: string; startDate?: string; endDate?: string; hitResult?: string }): Promise<CallLog[]> => {
     await delay(500);
-    let logs = [...mockCallLogs];
+    let logs = storageService.getCallLogs();
 
     if (params?.ruleId) {
       logs = logs.filter(l => l.ruleId === params.ruleId);
@@ -187,14 +337,22 @@ export const logApi = {
 
   getAlerts: async (): Promise<Alert[]> => {
     await delay(400);
-    return mockAlerts;
+    const logs = storageService.getCallLogs();
+    const errors = logs.filter(l => l.hitResult === 'error').slice(0, 10);
+
+    return errors.map((log, index) => ({
+      id: `alert-${index}`,
+      ruleId: log.ruleId,
+      ruleName: log.ruleName,
+      type: 'error' as const,
+      message: log.error || '执行错误',
+      timestamp: log.timestamp,
+      resolved: false
+    }));
   },
 
   resolveAlert: async (alertId: string): Promise<boolean> => {
     await delay(300);
-    const alert = mockAlerts.find(a => a.id === alertId);
-    if (!alert) return false;
-    alert.resolved = true;
     return true;
   }
 };
@@ -202,12 +360,13 @@ export const logApi = {
 export const userApi = {
   getUsers: async (): Promise<User[]> => {
     await delay(500);
-    return mockUsers;
+    return storageService.getUsers();
   },
 
   getUserById: async (id: string): Promise<User | null> => {
     await delay(300);
-    return mockUsers.find(u => u.id === id) || null;
+    const users = storageService.getUsers();
+    return users.find(u => u.id === id) || null;
   },
 
   createUser: async (user: Omit<User, 'id' | 'lastLogin'>): Promise<User> => {
@@ -217,24 +376,17 @@ export const userApi = {
       id: `user-${Date.now()}`,
       lastLogin: new Date().toISOString()
     };
-    mockUsers.push(newUser);
+    storageService.addUser(newUser);
     return newUser;
   },
 
   updateUser: async (id: string, updates: Partial<User>): Promise<User | null> => {
     await delay(500);
-    const index = mockUsers.findIndex(u => u.id === id);
-    if (index === -1) return null;
-
-    mockUsers[index] = { ...mockUsers[index], ...updates };
-    return mockUsers[index];
+    return storageService.updateUser(id, updates);
   },
 
   deleteUser: async (id: string): Promise<boolean> => {
     await delay(400);
-    const index = mockUsers.findIndex(u => u.id === id);
-    if (index === -1) return false;
-    mockUsers.splice(index, 1);
-    return true;
+    return storageService.deleteUser(id);
   }
 };

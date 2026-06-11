@@ -8,6 +8,7 @@ import RuleTest from './pages/RuleTest';
 import ReleaseHistory from './pages/ReleaseHistory';
 import CallLogs from './pages/CallLogs';
 import Permission from './pages/Permission';
+import ApprovalQueue from './pages/ApprovalQueue';
 import './assets/styles/global.css';
 
 const App: React.FC = () => {
@@ -36,6 +37,7 @@ const App: React.FC = () => {
           <Route path="/rules/:id/history" element={<ReleaseHistory />} />
           <Route path="/logs" element={<CallLogs />} />
           <Route path="/permissions" element={<Permission />} />
+          <Route path="/approvals" element={<ApprovalQueue />} />
         </Routes>
       </Router>
     </ConfigProvider>

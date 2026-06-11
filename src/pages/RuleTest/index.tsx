@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Card, Form, Input, Button, Space, Result, Tag, Spin, Collapse, Timeline, message } from 'antd';
+import { Card, Form, Input, Button, Space, Result, Tag, Spin, Collapse, Timeline, message, Table } from 'antd';
 import {
   PlayCircleOutlined,
   CheckCircleOutlined,
@@ -9,23 +9,18 @@ import {
 import { useNavigate, useParams } from 'react-router-dom';
 import { MainLayout } from '../../components/layout';
 import { useRuleStore } from '../../stores';
+import { evaluateConditions, executeActions, EvaluationResult } from '../../utils/ruleEngine';
+import type { Condition } from '../../types';
 
 const { Panel } = Collapse;
 const { TextArea } = Input;
 
-interface TestResult {
-  hit: boolean;
-  result: any;
-  executionTime: number;
-  details?: any[];
-}
-
 const RuleTest: React.FC = () => {
   const navigate = useNavigate();
   const { id } = useParams();
-  const { currentRule, fetchRuleById, testRule } = useRuleStore();
+  const { currentRule, fetchRuleById } = useRuleStore();
   const [testInput, setTestInput] = useState('');
-  const [testResult, setTestResult] = useState<TestResult | null>(null);
+  const [testResult, setTestResult] = useState<EvaluationResult | null>(null);
   const [testing, setTesting] = useState(false);
 
   useEffect(() => {
@@ -34,9 +29,14 @@ const RuleTest: React.FC = () => {
     }
   }, [id, fetchRuleById]);
 
-  const handleTest = async () => {
+  const handleTest = () => {
     if (!id || id === 'new') {
       message.warning('请先保存规则');
+      return;
+    }
+
+    if (!currentRule) {
+      message.warning('规则加载中，请稍后');
       return;
     }
 
@@ -50,12 +50,23 @@ const RuleTest: React.FC = () => {
       }
 
       setTesting(true);
-      const result = await testRule(id, input);
-      setTestResult(result);
-      message.success('测试完成');
+
+      const evaluationResult = evaluateConditions(currentRule.conditions, input);
+      const finalResult = executeActions(currentRule.actions, evaluationResult);
+
+      setTimeout(() => {
+        setTestResult(finalResult);
+        setTesting(false);
+
+        if (finalResult.hit) {
+          message.success('规则命中！');
+        } else {
+          message.info('规则未命中');
+        }
+      }, 500);
+
     } catch (error) {
-      message.error('测试失败');
-    } finally {
+      message.error('测试执行失败');
       setTesting(false);
     }
   };
@@ -78,6 +89,60 @@ const RuleTest: React.FC = () => {
     if (!testResult) return '';
     return testResult.hit ? '规则命中' : '规则未命中';
   };
+
+  const conditionColumns = [
+    {
+      title: '字段',
+      dataIndex: 'field',
+      key: 'field',
+      width: 200,
+    },
+    {
+      title: '运算符',
+      dataIndex: 'operator',
+      key: 'operator',
+      width: 100,
+      render: (op: string) => {
+        const operatorMap: Record<string, string> = {
+          eq: '等于',
+          ne: '不等于',
+          gt: '大于',
+          lt: '小于',
+          gte: '大于等于',
+          lte: '小于等于',
+          contains: '包含',
+          in: '在列表中',
+          between: '区间',
+        };
+        return operatorMap[op] || op;
+      }
+    },
+    {
+      title: '条件值',
+      dataIndex: 'value',
+      key: 'value',
+      width: 150,
+      render: (val: any) => JSON.stringify(val),
+    },
+    {
+      title: '输入值',
+      dataIndex: 'inputValue',
+      key: 'inputValue',
+      width: 150,
+      render: (val: any) => val !== undefined ? JSON.stringify(val) : <Tag color="red">未找到</Tag>,
+    },
+    {
+      title: '匹配结果',
+      dataIndex: 'result',
+      key: 'result',
+      width: 120,
+      render: (result: boolean) => (
+        result ?
+          <Tag color="green">✓ 匹配</Tag> :
+          <Tag color="red">✗ 不匹配</Tag>
+      ),
+    },
+  ];
 
   return (
     <MainLayout
@@ -156,6 +221,23 @@ const RuleTest: React.FC = () => {
                 style={{ fontFamily: 'var(--font-family-mono)' }}
               />
             </Form.Item>
+            <div style={{ marginTop: 16, color: 'var(--color-text-secondary)' }}>
+              <strong>常用测试数据示例：</strong>
+              <div style={{ marginTop: 8 }}>
+                <Tag color="blue" style={{ marginBottom: 4 }}>风控规则</Tag>
+                <code style={{ display: 'block', marginBottom: 8, padding: 8, background: '#f5f5f5', borderRadius: 4 }}>
+                  {`{"userId": "user-123", "riskLevel": "high", "amount": 50000}`}
+                </code>
+                <Tag color="green" style={{ marginBottom: 4 }}>运营规则</Tag>
+                <code style={{ display: 'block', marginBottom: 8, padding: 8, background: '#f5f5f5', borderRadius: 4 }}>
+                  {`{"userId": "user-789", "isNew": true, "orderCount": 1}`}
+                </code>
+                <Tag color="orange" style={{ marginBottom: 4 }}>审批规则</Tag>
+                <code style={{ display: 'block', padding: 8, background: '#f5f5f5', borderRadius: 4 }}>
+                  {`{"userId": "user-vip", "vipLevel": 4}`}
+                </code>
+              </div>
+            </div>
           </Card>
 
           <Card
@@ -169,7 +251,7 @@ const RuleTest: React.FC = () => {
               <Collapse accordion>
                 {currentRule.conditions.map((condition, index) => (
                   <Panel
-                    header={`条件 ${index + 1}`}
+                    header={`条件 ${index + 1}: ${condition.field}`}
                     key={condition.id}
                   >
                     <pre style={{ fontFamily: 'var(--font-family-mono)', fontSize: 'var(--font-size-sm)' }}>
@@ -202,39 +284,42 @@ const RuleTest: React.FC = () => {
                 icon={getResultIcon()}
                 status={getResultStatus()}
                 title={getResultTitle()}
-                subTitle={`执行时间: ${testResult.executionTime}ms`}
+                subTitle={`命中条件: ${testResult.matchedConditions.filter(c => c.result).length}/${testResult.matchedConditions.length}`}
                 extra={
                   <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-                    <Card size="small" title="执行结果">
-                      <pre style={{ fontFamily: 'var(--font-family-mono)', fontSize: 'var(--font-size-sm)' }}>
-                        {JSON.stringify(testResult.result, null, 2)}
-                      </pre>
+                    <Card size="small" title="条件匹配详情">
+                      <Table
+                        columns={conditionColumns}
+                        dataSource={testResult.matchedConditions.map((mc, idx) => ({
+                          key: idx,
+                          field: mc.condition.field,
+                          operator: mc.condition.operator,
+                          value: mc.condition.value,
+                          inputValue: mc.inputValue,
+                          result: mc.result,
+                        }))}
+                        pagination={false}
+                        size="small"
+                      />
                     </Card>
+
+                    {testResult.hit && testResult.executedActions.length > 0 && (
+                      <Card size="small" title="执行动作">
+                        {testResult.executedActions.map((action, idx) => (
+                          <Tag key={idx} color="blue" style={{ marginBottom: 8, marginRight: 8, padding: '4px 12px' }}>
+                            {action.type}: {JSON.stringify(action.params)}
+                          </Tag>
+                        ))}
+                      </Card>
+                    )}
 
                     <Card size="small" title="执行流程">
                       <Timeline
-                        items={[
-                          {
-                            color: 'green',
-                            children: '接收输入参数',
-                          },
-                          {
-                            color: 'green',
-                            children: '解析规则条件',
-                          },
-                          {
-                            color: testResult.hit ? 'green' : 'blue',
-                            children: testResult.hit ? '条件匹配成功' : '条件不匹配',
-                          },
-                          {
-                            color: 'green',
-                            children: '执行动作',
-                          },
-                          {
-                            color: 'green',
-                            children: `返回结果 (${testResult.executionTime}ms)`,
-                          },
-                        ]}
+                        items={testResult.executionSteps.map((step, idx) => ({
+                          color: step.includes('匹配成功') || step.includes('执行完成') ? 'green' :
+                                 step.includes('不匹配') || step.includes('跳过') ? 'red' : 'blue',
+                          children: step,
+                        }))}
                       />
                     </Card>
                   </Space>

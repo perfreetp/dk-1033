@@ -1,14 +1,15 @@
 import React, { useEffect, useState } from 'react';
-import { Card, Timeline, Button, Space, Tag, Modal, message, Descriptions, Empty } from 'antd';
+import { Card, Timeline, Button, Space, Tag, Modal, message, Descriptions, Empty, Collapse, DiffOutlined } from 'antd';
 import {
   RollbackOutlined,
-  DiffOutlined,
   ClockCircleOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useParams } from 'react-router-dom';
 import { MainLayout } from '../../components/layout';
 import { ruleApi } from '../../services/api';
 import type { Rule, RuleVersion } from '../../types';
+
+const { Panel } = Collapse;
 
 const ReleaseHistory: React.FC = () => {
   const navigate = useNavigate();
@@ -49,9 +50,14 @@ const ReleaseHistory: React.FC = () => {
       cancelText: '取消',
       onOk: async () => {
         try {
-          await ruleApi.rollbackRule(id!, version.version);
-          message.success('回滚成功');
-          loadData();
+          const result = await ruleApi.rollbackRule(id!, version.version);
+          if (result) {
+            message.success('回滚成功');
+            loadData();
+            navigate(`/rules/${id}/edit`);
+          } else {
+            message.error('回滚失败');
+          }
         } catch (error) {
           message.error('回滚失败');
         }
@@ -115,121 +121,217 @@ const ReleaseHistory: React.FC = () => {
     </Card>
   );
 
-  return (
-    <MainLayout
-      breadcrumbs={[
-        { label: '规则列表', path: '/rules' },
-        { label: currentRule?.name || '规则', path: `/rules/${id}/edit` },
-        { label: '发布记录' },
-      ]}
-    >
-      <div style={{ animation: 'fadeIn 0.3s ease-out', maxWidth: 1000, margin: '0 auto' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 'var(--spacing-lg)' }}>
-          <h1 style={{ fontSize: 'var(--font-size-2xl)', margin: 0, fontWeight: 700 }}>
-            发布记录
-          </h1>
-          <Button onClick={() => navigate(`/rules/${id}/edit`)}>
-            返回编辑
-          </Button>
-        </div>
+  const renderDiff = () => {
+    if (!selectedVersion || !compareVersion) return null;
 
-        {currentRule && (
+    const newRule = selectedVersion.rule;
+    const oldRule = compareVersion.rule;
+
+    const diffs: Array<{ field: string; oldValue: any; newValue: any }> = [];
+
+    if (newRule.name !== oldRule.name) {
+      diffs.push({ field: '规则名称', oldValue: oldRule.name, newValue: newRule.name });
+    }
+    if (newRule.description !== oldRule.description) {
+      diffs.push({ field: '规则描述', oldValue: oldRule.description, newValue: newRule.description });
+    }
+    if (newRule.priority !== oldRule.priority) {
+      diffs.push({ field: '优先级', oldValue: `P${oldRule.priority}`, newValue: `P${newRule.priority}` });
+    }
+    if (newRule.businessLine !== oldRule.businessLine) {
+      diffs.push({ field: '业务线', oldValue: oldRule.businessLine, newValue: newRule.businessLine });
+    }
+    if (JSON.stringify(newRule.tags) !== JSON.stringify(oldRule.tags)) {
+      diffs.push({ field: '标签', oldValue: oldRule.tags.join(', '), newValue: newRule.tags.join(', ') });
+    }
+    if (newRule.conditions.length !== oldRule.conditions.length) {
+      diffs.push({
+        field: '条件数量',
+        oldValue: `${oldRule.conditions.length} 个`,
+        newValue: `${newRule.conditions.length} 个`
+      });
+    }
+    if (newRule.actions.length !== oldRule.actions.length) {
+      diffs.push({
+        field: '动作数量',
+        oldValue: `${oldRule.actions.length} 个`,
+        newValue: `${newRule.actions.length} 个`
+      });
+    }
+
+    return (
+      <div>
+        {diffs.length > 0 ? (
+          <div style={{ marginBottom: 'var(--spacing-lg)' }}>
+            <h4>关键差异：</h4>
+            <div style={{ maxHeight: 400, overflow: 'auto' }}>
+              {diffs.map((diff, idx) => (
+                <Card
+                  key={idx}
+                  size="small"
+                  style={{
+                    marginBottom: 'var(--spacing-sm)',
+                    borderLeft: '3px solid var(--color-warning)'
+                  }}
+                >
+                  <div style={{ fontWeight: 600, marginBottom: 'var(--spacing-xs)' }}>
+                    {diff.field}
+                  </div>
+                  <div style={{ display: 'flex', gap: 'var(--spacing-md)' }}>
+                    <Tag color="red">
+                      <span>旧: {String(diff.oldValue)}</span>
+                    </Tag>
+                    <Tag color="green">
+                      <span>新: {String(diff.newValue)}</span>
+                    </Tag>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <Tag color="blue" style={{ marginBottom: 'var(--spacing-lg)' }}>两个版本无关键差异</Tag>
+        )}
+
+        <Collapse accordion>
+          <Panel header={`v${selectedVersion.version} 完整内容`} key="new">
+            <pre style={{ fontSize: 'var(--font-size-xs)', maxHeight: 400, overflow: 'auto' }}>
+              {JSON.stringify(selectedVersion.rule, null, 2)}
+            </pre>
+          </Panel>
+          <Panel header={`v${compareVersion.version} 完整内容`} key="old">
+            <pre style={{ fontSize: 'var(--font-size-xs)', maxHeight: 400, overflow: 'auto' }}>
+              {JSON.stringify(compareVersion.rule, null, 2)}
+            </pre>
+          </Panel>
+        </Collapse>
+      </div>
+    );
+  };
+
+  return (
+    <>
+      <MainLayout
+        breadcrumbs={[
+          { label: '规则列表', path: '/rules' },
+          { label: currentRule?.name || '规则', path: `/rules/${id}/edit` },
+          { label: '发布记录' },
+        ]}
+      >
+        <div style={{ animation: 'fadeIn 0.3s ease-out', maxWidth: 1000, margin: '0 auto' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 'var(--spacing-lg)' }}>
+            <h1 style={{ fontSize: 'var(--font-size-2xl)', margin: 0, fontWeight: 700 }}>
+              发布记录
+            </h1>
+            <Space>
+              <Button onClick={() => navigate(`/rules/${id}/edit`)}>
+                返回编辑
+              </Button>
+              <Button onClick={loadData}>
+                刷新
+              </Button>
+            </Space>
+          </div>
+
+          {currentRule && (
+            <Card
+              title="当前规则"
+              style={{
+                borderRadius: 'var(--border-radius-md)',
+                boxShadow: 'var(--shadow-md)',
+                marginBottom: 'var(--spacing-lg)',
+              }}
+            >
+              <Descriptions>
+                <Descriptions.Item label="规则名称">{currentRule.name}</Descriptions.Item>
+                <Descriptions.Item label="规则ID">{currentRule.id}</Descriptions.Item>
+                <Descriptions.Item label="当前版本">v{currentRule.version}</Descriptions.Item>
+                <Descriptions.Item label="状态">
+                  <Tag color={currentRule.status === 'published' ? 'green' : 'default'}>
+                    {currentRule.status === 'published' ? '已发布' :
+                     currentRule.status === 'draft' ? '草稿' :
+                     currentRule.status === 'pending' ? '待审批' :
+                     currentRule.status === 'disabled' ? '已停用' : '灰度中'}
+                  </Tag>
+                </Descriptions.Item>
+              </Descriptions>
+            </Card>
+          )}
+
           <Card
-            title="当前规则"
+            title="版本历史"
             style={{
               borderRadius: 'var(--border-radius-md)',
               boxShadow: 'var(--shadow-md)',
-              marginBottom: 'var(--spacing-lg)',
             }}
           >
-            <Descriptions>
-              <Descriptions.Item label="规则名称">{currentRule.name}</Descriptions.Item>
-              <Descriptions.Item label="规则ID">{currentRule.id}</Descriptions.Item>
-              <Descriptions.Item label="当前版本">v{currentRule.version}</Descriptions.Item>
-              <Descriptions.Item label="状态">
-                <Tag color={currentRule.status === 'published' ? 'green' : 'default'}>
-                  {currentRule.status}
-                </Tag>
-              </Descriptions.Item>
-            </Descriptions>
-          </Card>
-        )}
-
-        <Card
-          title="版本历史"
-          style={{
-            borderRadius: 'var(--border-radius-md)',
-            boxShadow: 'var(--shadow-md)',
-          }}
-        >
-          {versions.length > 0 ? (
-            <Timeline
-              items={versions.map((version, index) => ({
-                dot: index === 0 ? <ClockCircleOutlined style={{ fontSize: 16 }} /> : undefined,
-                children: (
-                  <div
-                    style={{
-                      padding: 'var(--spacing-md)',
-                      background: index === 0 ? 'var(--color-bg)' : 'white',
-                      borderRadius: 'var(--border-radius-sm)',
-                      border: index === 0 ? '2px solid var(--color-secondary)' : '1px solid var(--color-border)',
-                    }}
+            {versions.length > 0 ? (
+              <Timeline>
+                {versions.map((version, index) => (
+                  <Timeline.Item
+                    key={version.id}
+                    dot={index === 0 ? <ClockCircleOutlined style={{ fontSize: 16 }} /> : undefined}
                   >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div>
-                        <Space>
-                          <strong style={{ fontSize: 'var(--font-size-lg)' }}>
-                            版本 {version.version}
-                          </strong>
-                          {index === 0 && (
-                            <Tag color="blue">最新</Tag>
-                          )}
-                        </Space>
-                        <div style={{ marginTop: 'var(--spacing-xs)', color: 'var(--color-text-secondary)' }}>
-                          {version.changeDescription}
+                    <div
+                      style={{
+                        padding: 'var(--spacing-md)',
+                        background: index === 0 ? 'var(--color-bg)' : 'white',
+                        borderRadius: 'var(--border-radius-sm)',
+                        border: index === 0 ? '2px solid var(--color-secondary)' : '1px solid var(--color-border)',
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div>
+                          <Space>
+                            <strong style={{ fontSize: 'var(--font-size-lg)' }}>
+                              版本 {version.version}
+                            </strong>
+                            {index === 0 && (
+                              <Tag color="blue">最新</Tag>
+                            )}
+                          </Space>
+                          <div style={{ marginTop: 'var(--spacing-xs)', color: 'var(--color-text-secondary)' }}>
+                            {version.changeDescription}
+                          </div>
+                        </div>
+                        <div style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--font-size-sm)' }}>
+                          {version.changedBy} · {new Date(version.changedAt).toLocaleDateString('zh-CN')}
                         </div>
                       </div>
-                      <div style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--font-size-sm)' }}>
-                        {version.changedBy} · {new Date(version.changedAt).toLocaleDateString('zh-CN')}
-                      </div>
-                    </div>
 
-                    {renderVersionDetails(version)}
-                  </div>
-                ),
-              }))}
-            />
-          ) : (
-            <Empty description="暂无版本记录" />
-          )}
-        </Card>
-      </div>
+                      {renderVersionDetails(version)}
+                    </div>
+                  </Timeline.Item>
+                ))}
+              </Timeline>
+            ) : (
+              <Empty description="暂无版本记录" />
+            )}
+          </Card>
+        </div>
+      </MainLayout>
 
       <Modal
         title="版本对比"
         open={showCompare}
         onCancel={() => setShowCompare(false)}
         footer={null}
-        width={900}
+        width={1000}
       >
         {selectedVersion && compareVersion && (
           <div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--spacing-lg)' }}>
-              <Card size="small" title={`v${selectedVersion.version} (新版本)`}>
-                <pre style={{ fontSize: 'var(--font-size-xs)', maxHeight: 400, overflow: 'auto' }}>
-                  {JSON.stringify(selectedVersion.rule, null, 2)}
-                </pre>
-              </Card>
-              <Card size="small" title={`v${compareVersion.version} (旧版本)`}>
-                <pre style={{ fontSize: 'var(--font-size-xs)', maxHeight: 400, overflow: 'auto' }}>
-                  {JSON.stringify(compareVersion.rule, null, 2)}
-                </pre>
-              </Card>
+            <div style={{ marginBottom: 'var(--spacing-lg)' }}>
+              <Space>
+                <Tag color="green">v{selectedVersion.version} (新版本)</Tag>
+                <span>vs</span>
+                <Tag color="red">v{compareVersion.version} (旧版本)</Tag>
+              </Space>
             </div>
+            {renderDiff()}
           </div>
         )}
       </Modal>
-    </MainLayout>
+    </>
   );
 };
 

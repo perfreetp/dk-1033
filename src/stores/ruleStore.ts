@@ -16,6 +16,8 @@ interface RuleState {
   disableRule: (id: string) => Promise<void>;
   copyRule: (id: string) => Promise<Rule>;
   testRule: (id: string, input: Record<string, any>) => Promise<any>;
+  approveRule: (id: string) => Promise<void>;
+  rejectRule: (id: string, reason: string) => Promise<void>;
   setFilters: (filters: RuleFilters) => void;
   clearFilters: () => void;
 }
@@ -104,6 +106,7 @@ export const useRuleStore = create<RuleState>((set, get) => ({
       if (publishedRule) {
         set(state => ({
           rules: state.rules.map(r => r.id === id ? publishedRule : r),
+          currentRule: state.currentRule?.id === id ? publishedRule : state.currentRule,
           loading: false
         }));
       }
@@ -121,6 +124,7 @@ export const useRuleStore = create<RuleState>((set, get) => ({
       if (disabledRule) {
         set(state => ({
           rules: state.rules.map(r => r.id === id ? disabledRule : r),
+          currentRule: state.currentRule?.id === id ? disabledRule : state.currentRule,
           loading: false
         }));
       }
@@ -155,6 +159,42 @@ export const useRuleStore = create<RuleState>((set, get) => ({
       return await ruleApi.testRule(id, input);
     } catch (error) {
       console.error('Failed to test rule:', error);
+      throw error;
+    }
+  },
+
+  approveRule: async (id: string) => {
+    set({ loading: true });
+    try {
+      const approvedRule = await ruleApi.approveRule(id);
+      if (approvedRule) {
+        set(state => ({
+          rules: state.rules.map(r => r.id === id ? approvedRule : r),
+          currentRule: state.currentRule?.id === id ? approvedRule : state.currentRule,
+          loading: false
+        }));
+      }
+    } catch (error) {
+      console.error('Failed to approve rule:', error);
+      set({ loading: false });
+      throw error;
+    }
+  },
+
+  rejectRule: async (id: string, reason: string) => {
+    set({ loading: true });
+    try {
+      const rejectedRule = await ruleApi.rejectRule(id, reason);
+      if (rejectedRule) {
+        set(state => ({
+          rules: state.rules.map(r => r.id === id ? rejectedRule : r),
+          currentRule: state.currentRule?.id === id ? rejectedRule : state.currentRule,
+          loading: false
+        }));
+      }
+    } catch (error) {
+      console.error('Failed to reject rule:', error);
+      set({ loading: false });
       throw error;
     }
   },
