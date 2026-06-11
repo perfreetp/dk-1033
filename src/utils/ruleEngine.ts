@@ -52,9 +52,14 @@ function evaluateWithLogic(
   matchedConditions: EvaluationResult['matchedConditions'],
   executionSteps: string[]
 ): boolean {
-  let currentLogic: 'AND' | 'OR' = 'AND';
-  let logicGroupResults: boolean[] = [];
-  let orGroupConditions: Array<{condition: Condition; inputValue: any; result: boolean}> = [];
+  if (conditions.length === 0) {
+    return false;
+  }
+
+  const andGroups: Array<{conditions: Condition[]; results: boolean[]}> = [];
+  const orConditions: Array<{condition: Condition; result: boolean}> = [];
+  
+  let currentAndGroup: {conditions: Condition[]; results: boolean[]} | null = null;
 
   for (let i = 0; i < conditions.length; i++) {
     const condition = conditions[i];
@@ -71,50 +76,6 @@ function evaluateWithLogic(
       }
     }
 
-    if (i === 0) {
-      executionSteps.push(`【条件 ${i + 1}】字段: ${condition.field}`);
-      if (flatSuggestion) {
-        executionSteps.push(`  ℹ ${flatSuggestion}`);
-      }
-      if (condition.logicalOperator === 'OR') {
-        currentLogic = 'OR';
-        executionSteps.push(`  逻辑: OR (与前一个条件用 OR 连接)`);
-      } else {
-        executionSteps.push(`  逻辑: AND`);
-      }
-    } else {
-      const prevCondition = conditions[i - 1];
-      if (prevCondition.logicalOperator) {
-        if (currentLogic === 'OR' && prevCondition.logicalOperator !== 'OR') {
-          const orGroupHit = orGroupConditions.some(c => c.result);
-          executionSteps.push(`  → OR组结束: ${orGroupHit ? '满足' : '不满足'}`);
-          logicGroupResults.push(orGroupHit);
-          orGroupConditions = [];
-        }
-        currentLogic = prevCondition.logicalOperator;
-
-        if (currentLogic === 'OR') {
-          executionSteps.push(`【条件 ${i + 1}】字段: ${condition.field}`);
-          if (flatSuggestion) {
-            executionSteps.push(`  ℹ ${flatSuggestion}`);
-          }
-          executionSteps.push(`  逻辑: OR (与前一个条件用 OR 连接)`);
-        } else {
-          executionSteps.push(`【条件 ${i + 1}】字段: ${condition.field}`);
-          if (flatSuggestion) {
-            executionSteps.push(`  ℹ ${flatSuggestion}`);
-          }
-          executionSteps.push(`  逻辑: AND`);
-        }
-      } else {
-        executionSteps.push(`【条件 ${i + 1}】字段: ${condition.field}`);
-        if (flatSuggestion) {
-          executionSteps.push(`  ℹ ${flatSuggestion}`);
-        }
-        executionSteps.push(`  逻辑: AND`);
-      }
-    }
-
     const conditionResult = evaluateCondition(condition, inputValue, executionSteps);
 
     matchedConditions.push({
@@ -123,70 +84,135 @@ function evaluateWithLogic(
       inputValue
     });
 
-    if (currentLogic === 'AND') {
-      logicGroupResults.push(conditionResult);
-      if (!conditionResult) {
-        executionSteps.push(`  结果: ✗ 不匹配`);
-      } else {
-        executionSteps.push(`  结果: ✓ 匹配`);
+    if (i === 0) {
+      executionSteps.push(`【条件 ${i + 1}】字段: ${condition.field}`);
+      if (flatSuggestion) {
+        executionSteps.push(`  ℹ ${flatSuggestion}`);
       }
-    } else {
-      orGroupConditions.push({ condition, inputValue, result: conditionResult });
-      if (conditionResult) {
-        executionSteps.push(`  结果: ✓ 匹配 (OR条件下任意一个匹配即可)`);
+      
+      if (condition.logicalOperator === 'OR') {
+        orConditions.push({ condition, result: conditionResult });
+        executionSteps.push(`  逻辑: OR（首个条件为OR组）`);
+        if (conditionResult) {
+          executionSteps.push(`  结果: ✓ 匹配 (OR条件下任意一个匹配即可)`);
+        } else {
+          executionSteps.push(`  结果: ✗ 不匹配`);
+        }
       } else {
-        executionSteps.push(`  结果: ✗ 不匹配`);
-      }
-    }
-  }
-
-  if (currentLogic === 'OR' && orGroupConditions.length > 0) {
-    const orGroupHit = orGroupConditions.some(c => c.result);
-    executionSteps.push(`  → OR组结束: ${orGroupHit ? '满足' : '不满足'}`);
-    logicGroupResults.push(orGroupHit);
-  }
-
-  const finalResult = logicGroupResults.every(r => r);
-
-  if (logicGroupResults.length > 1) {
-    const details = logicGroupResults.map((r, idx) => {
-      if (idx === logicGroupResults.length - 1 && conditions.length > 0) {
-        const lastCondition = conditions[conditions.length - 1];
-        if (lastCondition.logicalOperator === 'OR') {
-          const orConditions = conditions.filter(c => c.logicalOperator === 'OR');
-          return `OR组(${orConditions.length}个条件, ${r ? '满足' : '不满足'})`;
+        currentAndGroup = {
+          conditions: [condition],
+          results: [conditionResult]
+        };
+        executionSteps.push(`  逻辑: AND`);
+        if (conditionResult) {
+          executionSteps.push(`  结果: ✓ 匹配`);
+        } else {
+          executionSteps.push(`  结果: ✗ 不匹配`);
         }
       }
-      return `AND条件${idx + 1}(${r ? '满足' : '不满足'})`;
-    });
-    
-    executionSteps.push(`  → 逻辑组合: ${details.join(' × ')}`);
-    
-    if (finalResult) {
-      executionSteps.push(`  → 最终结果: 所有条件满足 = 命中 ✓`);
     } else {
-      executionSteps.push(`  → 最终结果: 未满足全部条件 = 未命中 ✗`);
+      executionSteps.push(`【条件 ${i + 1}】字段: ${condition.field}`);
+      if (flatSuggestion) {
+        executionSteps.push(`  ℹ ${flatSuggestion}`);
+      }
+
+      if (condition.logicalOperator === 'OR') {
+        if (currentAndGroup) {
+          const andGroupHit = currentAndGroup.results.every(r => r);
+          executionSteps.push(`  逻辑: OR（与前一AND组用OR连接）`);
+          executionSteps.push(`  → AND组(${currentAndGroup.conditions.length}个条件): ${andGroupHit ? '满足 ✓' : '不满足 ✗'}`);
+          andGroups.push(currentAndGroup);
+          currentAndGroup = null;
+        } else {
+          executionSteps.push(`  逻辑: OR（与前一个OR条件用OR连接）`);
+        }
+        
+        orConditions.push({ condition, result: conditionResult });
+        if (conditionResult) {
+          executionSteps.push(`  结果: ✓ 匹配 (OR条件下任意一个匹配即可)`);
+        } else {
+          executionSteps.push(`  结果: ✗ 不匹配`);
+        }
+      } else {
+        if (currentAndGroup) {
+          executionSteps.push(`  逻辑: AND（与前一AND条件用AND连接）`);
+        } else {
+          currentAndGroup = {
+            conditions: [],
+            results: []
+          };
+          executionSteps.push(`  逻辑: AND（新AND组开始）`);
+        }
+        
+        currentAndGroup!.conditions.push(condition);
+        currentAndGroup!.results.push(conditionResult);
+        
+        if (conditionResult) {
+          executionSteps.push(`  结果: ✓ 匹配`);
+        } else {
+          executionSteps.push(`  结果: ✗ 不匹配`);
+        }
+      }
     }
-  } else if (logicGroupResults.length === 1) {
-    if (finalResult) {
-      executionSteps.push(`  → 最终结果: 条件满足 = 命中 ✓`);
-    } else {
-      executionSteps.push(`  → 最终结果: 条件不满足 = 未命中 ✗`);
-    }
+  }
+
+  if (currentAndGroup) {
+    const andGroupHit = currentAndGroup.results.every(r => r);
+    executionSteps.push(`  → AND组(${currentAndGroup.conditions.length}个条件): ${andGroupHit ? '满足 ✓' : '不满足 ✗'}`);
+    andGroups.push(currentAndGroup);
+  }
+
+  const allAndGroupsSatisfied = andGroups.every(group => group.results.every(r => r));
+  const anyOrConditionSatisfied = orConditions.length === 0 || orConditions.some(c => c.result);
+
+  const finalResult = allAndGroupsSatisfied && anyOrConditionSatisfied;
+
+  executionSteps.push('');
+  
+  const summaryParts: string[] = [];
+  if (andGroups.length > 0) {
+    summaryParts.push(`${andGroups.length}个AND组(全部${allAndGroupsSatisfied ? '满足 ✓' : '不满足 ✗'})`);
+  }
+  if (orConditions.length > 0) {
+    summaryParts.push(`${orConditions.length}个OR条件(${anyOrConditionSatisfied ? '任意满足 ✓' : '全部不满足 ✗'})`);
+  }
+  
+  if (summaryParts.length > 0) {
+    executionSteps.push(`  → 逻辑评估: ${summaryParts.join(' × ')}`);
+  }
+  
+  if (finalResult) {
+    executionSteps.push(`  → 最终结果: 命中 ✓`);
+  } else {
+    executionSteps.push(`  → 最终结果: 未命中 ✗`);
   }
 
   return finalResult;
 }
 
 function getFlatValue(input: Record<string, any>, field: string): any {
+  if (field in input) {
+    return { value: input[field], found: true, suggestion: undefined };
+  }
+  
   if (field.includes('.')) {
     const parts = field.split('.');
     const directField = parts[parts.length - 1];
     if (directField in input) {
       return { value: input[directField], found: true, suggestion: `使用扁平字段 "${directField}" 替代路径 "${field}"` };
     }
+    
+    const altField = field.replace(/\./g, '_');
+    if (altField in input) {
+      return { value: input[altField], found: true, suggestion: `使用字段 "${altField}" 替代路径 "${field}"` };
+    }
   }
-  return { value: undefined, found: false, suggestion: field.includes('.') ? `路径字段 "${field}" 未找到，可尝试使用扁平写法或提供完整嵌套结构` : undefined };
+  
+  const suggestion = field.includes('.') 
+    ? `路径字段 "${field}" 未找到。可尝试：1) 使用扁平字段 "${field.split('.').pop()}"  2) 使用嵌套格式 {"${field.split('.')[0]}": {"${field.split('.').slice(1).join('": {"')}": ...}}  3) 直接使用字段名`
+    : undefined;
+    
+  return { value: undefined, found: false, suggestion };
 }
 
 function evaluateCondition(
