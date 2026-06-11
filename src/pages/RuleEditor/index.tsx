@@ -29,6 +29,60 @@ import type { Condition, Action } from '../../types';
 const { Option } = Select;
 const { TextArea } = Input;
 
+function smartParseValue(value: string): any {
+  const trimmed = value.trim();
+  
+  if (trimmed === 'true') return true;
+  if (trimmed === 'false') return false;
+  
+  if (trimmed === 'null') return null;
+  if (trimmed === 'undefined') return undefined;
+  
+  if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        return parsed;
+      }
+    } catch {
+      const inner = trimmed.slice(1, -1).trim();
+      if (inner) {
+        const items = inner.split(',').map(s => {
+          const item = s.trim();
+          if (item === 'true') return true;
+          if (item === 'false') return false;
+          if (!isNaN(Number(item))) return Number(item);
+          if ((item.startsWith('"') && item.endsWith('"')) ||
+              (item.startsWith("'") && item.endsWith("'"))) {
+            return item.slice(1, -1);
+          }
+          return item;
+        });
+        return items;
+      }
+      return [];
+    }
+  }
+  
+  if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+    try {
+      return JSON.parse(trimmed);
+    } catch {
+      return trimmed;
+    }
+  }
+  
+  if (!isNaN(Number(trimmed))) {
+    const num = Number(trimmed);
+    if (Number.isInteger(num)) {
+      return num;
+    }
+    return num;
+  }
+  
+  return trimmed;
+}
+
 const RuleEditor: React.FC = () => {
   const navigate = useNavigate();
   const { id } = useParams();
@@ -83,7 +137,13 @@ const RuleEditor: React.FC = () => {
 
   const handleConditionChange = (index: number, field: keyof Condition, value: any) => {
     const updated = [...conditions];
-    updated[index] = { ...updated[index], [field]: value };
+    
+    if (field === 'value') {
+      updated[index] = { ...updated[index], [field]: smartParseValue(value) };
+    } else {
+      updated[index] = { ...updated[index], [field]: value };
+    }
+    
     setConditions(updated);
   };
 
@@ -292,6 +352,15 @@ const RuleEditor: React.FC = () => {
                   marginBottom: 'var(--spacing-lg)',
                 }}
               >
+                <div style={{ marginBottom: 16, padding: '12px', background: '#f0f5ff', borderRadius: 6, fontSize: 13 }}>
+                  <strong>类型自动解析：</strong>
+                  <ul style={{ margin: '8px 0 0 0', paddingLeft: 20 }}>
+                    <li>数字：直接输入 <code>100000</code>（自动识别为数字类型）</li>
+                    <li>布尔值：输入 <code>true</code> 或 <code>false</code>（自动识别为布尔类型）</li>
+                    <li>数组：输入 <code>["A","B"]</code> 或 <code>[100,200]</code>（自动识别为数组类型）</li>
+                    <li>字符串：输入带引号的文本 <code>"hello"</code></li>
+                  </ul>
+                </div>
                 {conditions.length === 0 ? (
                   <div style={{ textAlign: 'center', padding: 'var(--spacing-xl)', color: 'var(--color-text-secondary)' }}>
                     暂无条件，点击"添加条件"开始配置
@@ -338,8 +407,16 @@ const RuleEditor: React.FC = () => {
                           </Form.Item>
                           <Form.Item label="值" style={{ flex: 1, marginBottom: 0 }}>
                             <Input
-                              placeholder="值"
-                              value={condition.value}
+                              placeholder={
+                                condition.operator === 'in' || condition.operator === 'between'
+                                  ? '如 ["A","B"] 或 [100,200]'
+                                  : '如 100000, true, "text"'
+                              }
+                              value={
+                                typeof condition.value === 'object'
+                                  ? JSON.stringify(condition.value)
+                                  : String(condition.value ?? '')
+                              }
                               onChange={(e) => handleConditionChange(index, 'value', e.target.value)}
                             />
                           </Form.Item>

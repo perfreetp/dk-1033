@@ -221,6 +221,18 @@ const RuleTest: React.FC = () => {
               />
             </Form.Item>
             <div style={{ marginTop: 16, color: 'var(--color-text-secondary)' }}>
+              <div style={{ marginBottom: 8, fontWeight: 500 }}><strong>字段填写说明：</strong></div>
+              <ul style={{ marginBottom: 16, paddingLeft: 20 }}>
+                <li style={{ marginBottom: 4 }}>
+                  <strong>扁平写法（推荐）：</strong>直接填写字段名，如 <code>{'{'}isProxy: true{'}'}</code> 可匹配条件中的 <code>ip.isProxy</code>
+                </li>
+                <li style={{ marginBottom: 4 }}>
+                  <strong>嵌套写法：</strong>支持完整路径，如 <code>{'{'}ip: {'{'}isProxy: true{'}'}{'}'}</code>
+                </li>
+                <li style={{ marginBottom: 4 }}>
+                  <strong>类型自动解析：</strong>数字（如 <code>100000</code>）、布尔值（如 <code>true</code>）、数组（如 <code>{"[\"A\", \"B\"]"}</code>）会自动识别
+                </li>
+              </ul>
               <strong>常用测试数据示例：</strong>
               <div style={{ marginTop: 8 }}>
                 <Tag color="blue" style={{ marginBottom: 4 }}>风控规则</Tag>
