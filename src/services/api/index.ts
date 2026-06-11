@@ -351,7 +351,7 @@ export const logApi = {
     }));
   },
 
-  resolveAlert: async (alertId: string): Promise<boolean> => {
+  resolveAlert: async (_alertId: string): Promise<boolean> => {
     await delay(300);
     return true;
   }

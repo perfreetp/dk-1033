@@ -17,15 +17,50 @@ export function evaluateConditions(
 ): EvaluationResult {
   const matchedConditions: EvaluationResult['matchedConditions'] = [];
   const executionSteps: string[] = [];
-  let overallHit = true;
 
   executionSteps.push('开始评估条件');
+
+  if (conditions.length === 0) {
+    executionSteps.push('无条件配置');
+    return {
+      hit: false,
+      matchedConditions: [],
+      executedActions: [],
+      executionSteps
+    };
+  }
+
+  let currentLogic: 'AND' | 'OR' = 'AND';
+  let groupResults: boolean[] = [];
 
   for (let i = 0; i < conditions.length; i++) {
     const condition = conditions[i];
     const inputValue = getNestedValue(input, condition.field);
 
-    executionSteps.push(`评估条件 ${i + 1}: ${condition.field} ${condition.operator} ${condition.value}`);
+    if (i === 0) {
+      executionSteps.push(`评估条件 ${i + 1}: ${condition.field} ${getOperatorText(condition.operator)} ${JSON.stringify(condition.value)}`);
+      if (condition.logicalOperator === 'OR') {
+        currentLogic = 'OR';
+        executionSteps.push(`逻辑: 后续条件使用 OR 运算`);
+      }
+    } else {
+      const prevCondition = conditions[i - 1];
+      if (prevCondition.logicalOperator) {
+        currentLogic = prevCondition.logicalOperator;
+        if (currentLogic === 'OR') {
+          executionSteps.push(`逻辑: OR 条件组结束`);
+          executionSteps.push(`OR组结果: ${groupResults.some(r => r) ? '满足' : '不满足'}`);
+          groupResults = [];
+        }
+        executionSteps.push(`逻辑: 后续条件使用 ${currentLogic} 运算`);
+      }
+
+      executionSteps.push(`评估条件 ${i + 1}: ${condition.field} ${getOperatorText(condition.operator)} ${JSON.stringify(condition.value)}`);
+      if (condition.logicalOperator === 'OR') {
+        currentLogic = 'OR';
+        executionSteps.push(`逻辑: 后续条件使用 OR 运算`);
+      }
+    }
 
     const conditionResult = evaluateCondition(condition, inputValue);
     matchedConditions.push({
@@ -34,18 +69,44 @@ export function evaluateConditions(
       inputValue
     });
 
-    if (!conditionResult) {
-      overallHit = false;
+    if (currentLogic === 'AND') {
+      groupResults.push(conditionResult);
+      if (!conditionResult) {
+        executionSteps.push(`结果: 不匹配`);
+      } else {
+        executionSteps.push(`结果: 匹配`);
+      }
+    } else {
+      groupResults.push(conditionResult);
+      if (conditionResult) {
+        executionSteps.push(`结果: 匹配 (OR条件下任意一个匹配即可)`);
+      } else {
+        executionSteps.push(`结果: 不匹配`);
+      }
     }
   }
 
-  if (overallHit && conditions.length > 0) {
-    executionSteps.push('所有条件匹配成功');
-  } else if (conditions.length === 0) {
-    overallHit = false;
-    executionSteps.push('无条件配置');
+  const finalResult = groupResults.length > 0 && (
+    currentLogic === 'AND' ? groupResults.every(r => r) : groupResults.some(r => r)
+  );
+
+  const allResults = matchedConditions.map(mc => mc.result);
+  const hasAndGroups = conditions.some(c => !c.logicalOperator || c.logicalOperator === 'AND');
+  const hasOrGroups = conditions.some(c => c.logicalOperator === 'OR');
+
+  let overallHit = false;
+  if (hasOrGroups) {
+    overallHit = finalResult;
+  } else if (hasAndGroups) {
+    overallHit = allResults.every(r => r);
   } else {
-    executionSteps.push('条件不匹配');
+    overallHit = allResults.every(r => r);
+  }
+
+  if (overallHit) {
+    executionSteps.push(`最终结果: 规则命中 (${currentLogic === 'AND' ? '所有AND条件满足' : 'OR条件满足'})`);
+  } else {
+    executionSteps.push(`最终结果: 规则未命中`);
   }
 
   return {
@@ -54,6 +115,21 @@ export function evaluateConditions(
     executedActions: [],
     executionSteps
   };
+}
+
+function getOperatorText(operator: string): string {
+  const operatorMap: Record<string, string> = {
+    eq: '=',
+    ne: '≠',
+    gt: '>',
+    lt: '<',
+    gte: '≥',
+    lte: '≤',
+    contains: '包含',
+    in: '∈',
+    between: '区间',
+  };
+  return operatorMap[operator] || operator;
 }
 
 function getNestedValue(obj: Record<string, any>, path: string): any {
@@ -82,16 +158,40 @@ function evaluateCondition(condition: Condition, inputValue: any): boolean {
       return inputValue !== value;
 
     case 'gt':
-      return typeof inputValue === 'number' && typeof value === 'number' && inputValue > value;
+      if (typeof inputValue === 'number' && typeof value === 'number') {
+        return inputValue > value;
+      }
+      if (typeof inputValue === 'string' && typeof value === 'string') {
+        return inputValue > value;
+      }
+      return false;
 
     case 'lt':
-      return typeof inputValue === 'number' && typeof value === 'number' && inputValue < value;
+      if (typeof inputValue === 'number' && typeof value === 'number') {
+        return inputValue < value;
+      }
+      if (typeof inputValue === 'string' && typeof value === 'string') {
+        return inputValue < value;
+      }
+      return false;
 
     case 'gte':
-      return typeof inputValue === 'number' && typeof value === 'number' && inputValue >= value;
+      if (typeof inputValue === 'number' && typeof value === 'number') {
+        return inputValue >= value;
+      }
+      if (typeof inputValue === 'string' && typeof value === 'string') {
+        return inputValue >= value;
+      }
+      return false;
 
     case 'lte':
-      return typeof inputValue === 'number' && typeof value === 'number' && inputValue <= value;
+      if (typeof inputValue === 'number' && typeof value === 'number') {
+        return inputValue <= value;
+      }
+      if (typeof inputValue === 'string' && typeof value === 'string') {
+        return inputValue <= value;
+      }
+      return false;
 
     case 'contains':
       if (typeof inputValue === 'string') {
@@ -111,11 +211,17 @@ function evaluateCondition(condition: Condition, inputValue: any): boolean {
     case 'between':
       if (Array.isArray(value) && value.length === 2) {
         const [min, max] = value;
-        return typeof inputValue === 'number' &&
-               typeof min === 'number' &&
-               typeof max === 'number' &&
-               inputValue >= min &&
-               inputValue <= max;
+
+        if (typeof min === 'string' && typeof max === 'string' &&
+            typeof inputValue === 'string') {
+          return inputValue >= min && inputValue <= max;
+        }
+
+        if (typeof inputValue === 'number' &&
+            typeof min === 'number' &&
+            typeof max === 'number') {
+          return inputValue >= min && inputValue <= max;
+        }
       }
       return false;
 
@@ -135,7 +241,7 @@ export function executeActions(
 
   if (result.hit) {
     for (const action of actions) {
-      result.executionSteps.push(`执行动作 ${action.order}: ${action.type}`);
+      result.executionSteps.push(`执行动作 ${action.order}: ${action.type} - ${JSON.stringify(action.params)}`);
       executedActions.push(action);
     }
     result.executionSteps.push('所有动作执行完成');

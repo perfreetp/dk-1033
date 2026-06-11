@@ -109,9 +109,17 @@ const RuleEditor: React.FC = () => {
 
   const handlePermanentChange = (checked: boolean) => {
     setIsPermanent(checked);
-    form.setFieldsValue({
-      permanent: checked,
-    });
+    if (checked) {
+      form.setFieldsValue({
+        permanent: true,
+        startTime: null,
+        endTime: null,
+      });
+    } else {
+      form.setFieldsValue({
+        permanent: false,
+      });
+    }
   };
 
   const handleSave = async (status: 'draft' | 'pending' = 'draft') => {

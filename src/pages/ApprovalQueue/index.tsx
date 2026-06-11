@@ -5,7 +5,6 @@ import {
   CheckCircleOutlined,
   CloseCircleOutlined,
   EyeOutlined,
-  ClockCircleOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { MainLayout } from '../../components/layout';

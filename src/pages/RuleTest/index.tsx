@@ -10,7 +10,6 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { MainLayout } from '../../components/layout';
 import { useRuleStore } from '../../stores';
 import { evaluateConditions, executeActions, EvaluationResult } from '../../utils/ruleEngine';
-import type { Condition } from '../../types';
 
 const { Panel } = Collapse;
 const { TextArea } = Input;
@@ -315,7 +314,7 @@ const RuleTest: React.FC = () => {
 
                     <Card size="small" title="执行流程">
                       <Timeline
-                        items={testResult.executionSteps.map((step, idx) => ({
+                        items={testResult.executionSteps.map((step) => ({
                           color: step.includes('匹配成功') || step.includes('执行完成') ? 'green' :
                                  step.includes('不匹配') || step.includes('跳过') ? 'red' : 'blue',
                           children: step,

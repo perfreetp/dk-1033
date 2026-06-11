@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { Card, Timeline, Button, Space, Tag, Modal, message, Descriptions, Empty, Collapse, DiffOutlined } from 'antd';
+import { Card, Timeline, Button, Space, Tag, Modal, message, Descriptions, Empty, Collapse } from 'antd';
 import {
   RollbackOutlined,
   ClockCircleOutlined,
+  DiffOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useParams } from 'react-router-dom';
 import { MainLayout } from '../../components/layout';
@@ -144,26 +145,106 @@ const ReleaseHistory: React.FC = () => {
     if (JSON.stringify(newRule.tags) !== JSON.stringify(oldRule.tags)) {
       diffs.push({ field: '标签', oldValue: oldRule.tags.join(', '), newValue: newRule.tags.join(', ') });
     }
-    if (newRule.conditions.length !== oldRule.conditions.length) {
-      diffs.push({
-        field: '条件数量',
-        oldValue: `${oldRule.conditions.length} 个`,
-        newValue: `${newRule.conditions.length} 个`
-      });
+
+    const conditionDiffs = [];
+    const maxConditions = Math.max(newRule.conditions.length, oldRule.conditions.length);
+    for (let i = 0; i < maxConditions; i++) {
+      const oldCond = oldRule.conditions[i];
+      const newCond = newRule.conditions[i];
+
+      if (!oldCond && newCond) {
+        conditionDiffs.push({
+          type: '新增',
+          index: i,
+          oldField: '-',
+          oldOperator: '-',
+          oldValue: '-',
+          newField: newCond.field,
+          newOperator: newCond.operator,
+          newValue: newCond.value
+        });
+      } else if (oldCond && !newCond) {
+        conditionDiffs.push({
+          type: '删除',
+          index: i,
+          oldField: oldCond.field,
+          oldOperator: oldCond.operator,
+          oldValue: oldCond.value,
+          newField: '-',
+          newOperator: '-',
+          newValue: '-'
+        });
+      } else if (oldCond && newCond) {
+        const fieldChanged = oldCond.field !== newCond.field;
+        const operatorChanged = oldCond.operator !== newCond.operator;
+        const valueChanged = JSON.stringify(oldCond.value) !== JSON.stringify(newCond.value);
+
+        if (fieldChanged || operatorChanged || valueChanged) {
+          conditionDiffs.push({
+            type: '修改',
+            index: i,
+            oldField: oldCond.field,
+            oldOperator: oldCond.operator,
+            oldValue: oldCond.value,
+            newField: newCond.field,
+            newOperator: newCond.operator,
+            newValue: newCond.value,
+            fieldChanged,
+            operatorChanged,
+            valueChanged
+          });
+        }
+      }
     }
-    if (newRule.actions.length !== oldRule.actions.length) {
-      diffs.push({
-        field: '动作数量',
-        oldValue: `${oldRule.actions.length} 个`,
-        newValue: `${newRule.actions.length} 个`
-      });
+
+    const actionDiffs = [];
+    const maxActions = Math.max(newRule.actions.length, oldRule.actions.length);
+    for (let i = 0; i < maxActions; i++) {
+      const oldAction = oldRule.actions[i];
+      const newAction = newRule.actions[i];
+
+      if (!oldAction && newAction) {
+        actionDiffs.push({
+          type: '新增',
+          index: i,
+          oldType: '-',
+          oldParams: '-',
+          newType: newAction.type,
+          newParams: newAction.params
+        });
+      } else if (oldAction && !newAction) {
+        actionDiffs.push({
+          type: '删除',
+          index: i,
+          oldType: oldAction.type,
+          oldParams: oldAction.params,
+          newType: '-',
+          newParams: '-'
+        });
+      } else if (oldAction && newAction) {
+        const typeChanged = oldAction.type !== newAction.type;
+        const paramsChanged = JSON.stringify(oldAction.params) !== JSON.stringify(newAction.params);
+
+        if (typeChanged || paramsChanged) {
+          actionDiffs.push({
+            type: '修改',
+            index: i,
+            oldType: oldAction.type,
+            oldParams: oldAction.params,
+            newType: newAction.type,
+            newParams: newAction.params,
+            typeChanged,
+            paramsChanged
+          });
+        }
+      }
     }
 
     return (
       <div>
-        {diffs.length > 0 ? (
+        {diffs.length > 0 && (
           <div style={{ marginBottom: 'var(--spacing-lg)' }}>
-            <h4>关键差异：</h4>
+            <h4>基本信息变更：</h4>
             <div style={{ maxHeight: 400, overflow: 'auto' }}>
               {diffs.map((diff, idx) => (
                 <Card
@@ -189,7 +270,126 @@ const ReleaseHistory: React.FC = () => {
               ))}
             </div>
           </div>
-        ) : (
+        )}
+
+        {conditionDiffs.length > 0 && (
+          <div style={{ marginBottom: 'var(--spacing-lg)' }}>
+            <h4>条件变更（{conditionDiffs.length} 处）：</h4>
+            <div style={{ maxHeight: 400, overflow: 'auto' }}>
+              {conditionDiffs.map((diff, idx) => (
+                <Card
+                  key={idx}
+                  size="small"
+                  style={{
+                    marginBottom: 'var(--spacing-sm)',
+                    borderLeft: `3px solid ${
+                      diff.type === '新增' ? 'var(--color-success)' :
+                      diff.type === '删除' ? 'var(--color-error)' :
+                      'var(--color-warning)'
+                    }`
+                  }}
+                >
+                  <div style={{ fontWeight: 600, marginBottom: 'var(--spacing-xs)' }}>
+                    条件 {diff.index + 1} - <Tag color={
+                      diff.type === '新增' ? 'green' :
+                      diff.type === '删除' ? 'red' : 'orange'
+                    }>{diff.type}</Tag>
+                  </div>
+                  <div style={{ fontSize: 'var(--font-size-sm)' }}>
+                    <div style={{ marginBottom: 'var(--spacing-xs)' }}>
+                      <strong>字段：</strong>
+                      {diff.oldField !== diff.newField ? (
+                        <>
+                          <Tag color="red">{diff.oldField}</Tag>
+                          <Tag color="green">{diff.newField}</Tag>
+                        </>
+                      ) : (
+                        <span>{diff.newField}</span>
+                      )}
+                    </div>
+                    <div style={{ marginBottom: 'var(--spacing-xs)' }}>
+                      <strong>运算符：</strong>
+                      {diff.oldOperator !== diff.newOperator ? (
+                        <>
+                          <Tag color="red">{diff.oldOperator}</Tag>
+                          <Tag color="green">{diff.newOperator}</Tag>
+                        </>
+                      ) : (
+                        <span>{diff.newOperator}</span>
+                      )}
+                    </div>
+                    <div>
+                      <strong>值：</strong>
+                      {diff.oldValue !== diff.newValue ? (
+                        <>
+                          <Tag color="red">{JSON.stringify(diff.oldValue)}</Tag>
+                          <Tag color="green">{JSON.stringify(diff.newValue)}</Tag>
+                        </>
+                      ) : (
+                        <span>{JSON.stringify(diff.newValue)}</span>
+                      )}
+                    </div>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {actionDiffs.length > 0 && (
+          <div style={{ marginBottom: 'var(--spacing-lg)' }}>
+            <h4>动作变更（{actionDiffs.length} 处）：</h4>
+            <div style={{ maxHeight: 400, overflow: 'auto' }}>
+              {actionDiffs.map((diff, idx) => (
+                <Card
+                  key={idx}
+                  size="small"
+                  style={{
+                    marginBottom: 'var(--spacing-sm)',
+                    borderLeft: `3px solid ${
+                      diff.type === '新增' ? 'var(--color-success)' :
+                      diff.type === '删除' ? 'var(--color-error)' :
+                      'var(--color-warning)'
+                    }`
+                  }}
+                >
+                  <div style={{ fontWeight: 600, marginBottom: 'var(--spacing-xs)' }}>
+                    动作 {diff.index + 1} - <Tag color={
+                      diff.type === '新增' ? 'green' :
+                      diff.type === '删除' ? 'red' : 'orange'
+                    }>{diff.type}</Tag>
+                  </div>
+                  <div style={{ fontSize: 'var(--font-size-sm)' }}>
+                    <div style={{ marginBottom: 'var(--spacing-xs)' }}>
+                      <strong>类型：</strong>
+                      {diff.oldType !== diff.newType ? (
+                        <>
+                          <Tag color="red">{diff.oldType}</Tag>
+                          <Tag color="green">{diff.newType}</Tag>
+                        </>
+                      ) : (
+                        <span>{diff.newType}</span>
+                      )}
+                    </div>
+                    <div>
+                      <strong>参数：</strong>
+                      {diff.oldParams !== diff.newParams ? (
+                        <>
+                          <Tag color="red">{JSON.stringify(diff.oldParams)}</Tag>
+                          <Tag color="green">{JSON.stringify(diff.newParams)}</Tag>
+                        </>
+                      ) : (
+                        <span>{JSON.stringify(diff.newParams)}</span>
+                      )}
+                    </div>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {diffs.length === 0 && conditionDiffs.length === 0 && actionDiffs.length === 0 && (
           <Tag color="blue" style={{ marginBottom: 'var(--spacing-lg)' }}>两个版本无关键差异</Tag>
         )}
 
